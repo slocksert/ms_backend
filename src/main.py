@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from decouple import config
 
-from routes import register, login, index, adm_route
+from controllers import register, login, index, adm_route
 
 
 app = FastAPI()
