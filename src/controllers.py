@@ -88,7 +88,7 @@ async def adm():
 
 @adm_route.get('/user/adm/getusers')
 async def get_all_users(session: Session = Depends(get_session)): 
-    users = au.return_users(session)
+    users = au.get_users(session)
 
     response = JSONResponse(
         content=users,
@@ -96,4 +96,14 @@ async def get_all_users(session: Session = Depends(get_session)):
     )
     return response
 
+@adm_route.get('/user/adm/getuser/{username}')
+async def get_user_by_username(username, session: Session = Depends(get_session)):
+    user = au.get_user_by_username(username, session)
+
+    response = JSONResponse(
+        content=user,
+        status_code=status.HTTP_200_OK
+    )
+
+    return response
     
