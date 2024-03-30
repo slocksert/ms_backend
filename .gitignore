@@ -1,3 +1,5 @@
 /.venv
 /.env
 **/__pycache__
+/ms_db
+/storage/pictures

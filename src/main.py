@@ -5,7 +5,6 @@ from decouple import config
 
 from controllers import register, login, index, adm_route
 
-
 app = FastAPI()
 
 app.add_middleware(

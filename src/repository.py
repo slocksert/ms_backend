@@ -1,15 +1,15 @@
 from models import Roles, Users
 from database import engine
+from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_username, incorret_password, jwt_error, unauthorized, image_error, existent_cnpj
 
 from sqlmodel import Session, select
 from passlib.context import CryptContext
 from decouple import config
-from fastapi import HTTPException, status
 from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 import re
+import os
 
-session = Session(bind=engine)
 
 SECRET_KEY = config('SECRET_KEY')
 ALGORITHM = config('ALGORITHM')
@@ -18,7 +18,7 @@ crypt_context = CryptContext(schemes=["argon2"]) #Argon2 abstraction
 
 #Create roles directly in the db
 #This function is called in the migration
-def create_roles():
+def create_roles(session:Session) -> None:
     
     adm_role = Roles(name="admin")
     normal_role = Roles(name="normal_user")
@@ -27,7 +27,7 @@ def create_roles():
     session.commit()
 
 #Create the default admin user in the db
-def create_admin():
+def create_admin(session:Session) -> None:
     
     query = select(Roles).where(Roles.name == "admin")
     role_admin = session.exec(query).first()
@@ -44,83 +44,87 @@ def create_admin():
     session.add(admin)
     session.commit()
 
-#Email validator using regular expressions 
-def email_is_valid(email: str) -> bool:
-    regex = r'\b[A-Za-z0-9._%+-]+@[A-za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
-
-    if re.fullmatch(regex, email):
-        return True
-    return False
-
 # Class that contains all the functions called by the routes
 class AuthUser:
+    def __decode_jwt(self, access_token) -> str:
+        payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
+        sub = payload['sub']
+        return sub
+    
+    def __identify_user(self, sub, is_email, session:Session) -> str:
+        if is_email:
+            user_query = select(Users).where(Users.email == sub)
+        else:
+            user_query = select(Users).where(Users.username == sub)
+        return user_query
+    
+    #Email validator using regular expressions 
+    def __email_is_valid(self, email: str) -> bool:
+        regex = r'\b[A-Za-z0-9._%+-]+@[A-za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
 
-    def __init__(self) -> None:
-        self.session = session
-
-    def user_register(self, user: Users):
+        if re.fullmatch(regex, email):
+            return True
+        return False
+        
+    def user_register(self, user: Users, session:Session) -> None:
         new_user = Users(
             username=user.username, 
             password=crypt_context.hash(user.password), 
             email=user.email,
             company_name=user.company_name,
-            has_cnpj=user.has_cnpj
+            has_cnpj=user.has_cnpj,
+            cnpj=user.cnpj,
+            phone=user.phone
         )
 
         user_query = select(Users).where(Users.username == user.username)
-        username = self.session.exec(user_query).first()
+        username = session.exec(user_query).first()
 
         email_query = select(Users).where(Users.email == user.email)
-        email = self.session.exec(email_query).first()
+        email = session.exec(email_query).first()
+
+        cnpj_query = select(Users).where(Users.cnpj == user.cnpj)
+        cnpj = session.exec(cnpj_query).first()
 
         if username:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT, 
-                detail="Existent user"
-            )
+            raise existent_user()
         
         elif len(user.password) < 10:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Password must be at least  10 characters long"
-            )
-            
+            raise len_password()
         
-        elif not email_is_valid(user.email):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST, 
-                detail="Invalid email format"
-            )
+        elif not self.__email_is_valid(user.email):
+            raise email_not_valid()
         
         elif email:
-            raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, 
-            detail="Existent email"
-        )
+            raise existent_email()
 
-        self.session.add(new_user)
-        self.session.commit()
+        elif user.has_cnpj:
+            if user.cnpj == None:
+                raise no_cnpj()
+                
+            elif len(user.cnpj) != 14 or not user.cnpj.isdigit():
+                raise cpf_len_and_is_digit()
+        
+            elif cnpj:
+                raise existent_cnpj()
 
-    def user_login(self, user: Users, expires_in: int = 10080):
-        is_email = email_is_valid(user.username)
+        session.add(new_user)
+        session.commit()
+
+    def user_login(self, user: Users, session:Session, expires_in: int = 120) -> dict[str, str]:
+        is_email = self.__email_is_valid(user.username)
         if is_email:
             user_query = select(Users).where(Users.email == user.username)
         else:
             user_query = select(Users).where(Users.username == user.username)
 
-        username = self.session.exec(user_query).first()
+        username = session.exec(user_query).first()
 
         if not username:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, 
-                detail="Incorret username or password"
-            )
+            raise incorrect_username()
         
         elif not crypt_context.verify(user.password, username.password):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, 
-                detail="Incorret username or password"
-            )
+            raise incorret_password()
 
         exp = datetime.now(timezone.utc) + timedelta(minutes=expires_in)
         payload = {
@@ -135,31 +139,78 @@ class AuthUser:
             "exp": exp.isoformat()
         }
 
-    def verify_token(self, access_token):
+    def verify_token(self, access_token:str, session:Session) -> None:
         try:
-            payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
-            sub = payload["sub"]
-            #Query that search for the user by decoding the access_token
-            username_query = select(Users).where(Users.username == sub)
-            username = session.exec(username_query).first()
-            
+            sub = self.__decode_jwt(access_token)
+            is_email = self.__email_is_valid(sub)
+
+            user_query = self.__identify_user(is_email, sub, session=session)
+            username = session.exec(user_query).first()
 
             if username is None:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, 
-                                    detail="Invalid access token")
+                raise jwt_error()
             
         except JWTError:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, 
-                                detail="Invalid access token")
+            raise jwt_error()
 
-    def verify_admin(self, access_token):
+    def verify_admin(self, access_token:str, session:Session) -> None:
         try:
-            payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
-            if payload["sub"] == "admin":
+            sub = self.__decode_jwt(access_token)
+            if sub == "admin" or sub == "admin@admin.com":
                 return
             else:
-                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
-                                     detail="Unauthorized", headers={"WWW-Authenticate": "Bearer"})
+                raise unauthorized()
 
         except JWTError:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid Token")
+            raise jwt_error()
+    
+    def write_image(self, filename:str, image_bytes:bytes) -> None:
+        directory = "storage/pictures"
+        
+        os.makedirs(directory, exist_ok=True)
+        
+        file_path = os.path.join(directory, filename)
+        with open(file_path, 'wb') as f:
+            f.write(image_bytes)
+
+    def delete_image(self, filename:str) -> None:
+        file_path = os.path.join("storage/pictures", filename)
+        if not os.path.exists(file_path):
+            raise FileNotFoundError(f'File "{filename}" does not exists!')
+        os.remove(file_path)
+
+    def send_uuid_image_to_db(self, filename:str, access_token:str, session:Session) -> None:
+        try:
+            sub = self.__decode_jwt(access_token)
+            is_email = self.__email_is_valid(sub)
+
+            user_query = self.__identify_user(sub=sub, is_email=is_email, session=session)
+            user = session.exec(user_query).first()
+
+            if user:
+            # Remove the old image file if it exists
+                if user.image_uuid != "Sem imagem":
+                    old_image_file = user.image_uuid
+                    os.remove(os.path.join("storage/pictures", old_image_file))
+
+                # Update the image filename in the database
+                user.image_uuid = filename
+                session.add(user)
+                session.commit()
+                
+        except Exception as e:
+            self.delete_image(filename)
+            raise image_error(e)
+
+    def return_users(self, session:Session):
+        statement = select(Users)
+        results = session.exec(statement)
+
+        users = []
+
+        for user in results:
+            user_dict = user.model_dump()
+            user_dict['registered_at'] = str(user_dict['registered_at'])
+            users.append(user_dict)
+        
+        return users

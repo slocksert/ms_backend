@@ -1,11 +1,11 @@
 services:
   mysql_db:
-    image: mysql:latest
+    image: mysql:8.0
+    volumes:
+      - ./ms_db:/var/lib/mysql
     container_name: ms_mysql
     restart: always
     ports:
       - 3306:3306
-    cap_add:
-      - SYS_NICE
     env_file:
-      - ./.env  
+      - ./.env
