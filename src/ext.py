@@ -45,13 +45,20 @@ def cpf_len_and_is_digit():
 def incorrect_username():
     raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Incorret username or password"
+            detail="Incorrect username or password"
     )
 
-def incorret_password():
+def invalid_username():
     raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Incorret username or password"
+            detail="Invalid username"
+    )
+
+
+def incorrect_password():
+    raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Incorrect username or password"
     )
 
 def jwt_error():
