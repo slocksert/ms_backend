@@ -20,6 +20,9 @@ class Users(SQLModel, table=True):
     registered_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     role_id: int = Field(default=2 ,foreign_key='roles.id', nullable=False)
 
+class UserUpdate(SQLModel):
+    new_username:str = Field(nullable=False, sa_type=String(20))
+
 class Roles(SQLModel, table=True):
 
     __tablename__ = "roles"
