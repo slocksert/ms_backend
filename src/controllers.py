@@ -49,7 +49,7 @@ async def user_login(response: Response,
 @index.get('/user')
 async def home():
     return JSONResponse(
-        content={'msg': 'User area'},  
+        content={'msg': 'Authorized'},  
         status_code=status.HTTP_200_OK
     )
 
@@ -109,7 +109,7 @@ async def delete_user(username, session:Session = Depends(get_session)):
 @adm_route.get('/user/adm')
 async def adm():
     return JSONResponse(
-        content={'msg': 'Admin area'},  
+        content={'msg': 'Authorized'},  
         status_code=status.HTTP_200_OK
     )
 

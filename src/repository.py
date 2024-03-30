@@ -152,9 +152,10 @@ class AuthUser:
     def verify_admin(self, access_token:str, session:Session) -> None:
         try:
             sub = self.__decode_jwt(access_token)
-            if sub == "admin" or sub == "admin@admin.com":
-                return
-            else:
+            statement = select(Users).where(Users.username == sub)
+            user = session.exec(statement).first()
+
+            if user.id != 1:
                 raise unauthorized()
 
         except JWTError:
