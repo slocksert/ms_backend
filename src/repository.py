@@ -202,7 +202,7 @@ class AuthUser:
             self.delete_image(filename)
             raise image_error(e)
 
-    def return_users(self, session:Session):
+    def get_users(self, session:Session):
         statement = select(Users)
         results = session.exec(statement)
 
@@ -214,3 +214,10 @@ class AuthUser:
             users.append(user_dict)
         
         return users
+    
+    def get_user_by_username(self, username, session:Session):
+        statement = select(Users).where(Users.username == username)
+        result = session.exec(statement).first().model_dump()
+        result['registered_at'] = str(result['registered_at'])
+       
+        return result
