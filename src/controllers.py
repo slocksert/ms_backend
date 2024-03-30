@@ -1,6 +1,7 @@
 from fastapi import status, APIRouter, Depends, Response, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
+
 import uuid
 from sqlmodel import Session
 
@@ -78,6 +79,32 @@ async def send_image(request: Request, response = Response, session: Session = D
     au.send_uuid_image_to_db(filename, cookie, session)
 
     return response
+
+@index.put('/user/updateuser')
+async def update_user(request:Request, user:models.UserUpdate, session: Session = Depends(get_session)):
+    cookie = request.cookies.get('jwt')
+    username = au.decode_jwt_and_verify(cookie, session)
+
+    user = {
+        "username": username, 
+        "new_username": user.new_username
+    }
+
+    au.update_username(user=user, session=session)
+
+    return JSONResponse(
+        content="Username updated",
+        status_code=status.HTTP_200_OK
+    )
+
+@adm_route.delete('/user/adm/deleteuser/{username}')
+async def delete_user(username, session:Session = Depends(get_session)):
+    au.delete_user(username, session)
+
+    return JSONResponse(
+        content=f'Deleted User: {username}',
+        status_code=status.HTTP_200_OK
+    )
 
 @adm_route.get('/user/adm')
 async def adm():
