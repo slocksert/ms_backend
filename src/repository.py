@@ -1,6 +1,5 @@
-from models import Roles, Users
-from database import engine
-from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_username, incorret_password, jwt_error, unauthorized, image_error, existent_cnpj
+from models import Roles, Users, UserUpdate
+from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_username, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username
 
 from sqlmodel import Session, select
 from passlib.context import CryptContext
@@ -37,7 +36,7 @@ def create_admin(session:Session) -> None:
         email="admin@admin.com",
         company_name="Maceió Segura",
         has_cnpj=False,
-        password=crypt_context.hash("admin"), 
+        password=crypt_context.hash(config("ADMIN_PWD")), 
         role_id=role_admin.id
     )
 
@@ -51,7 +50,7 @@ class AuthUser:
         sub = payload['sub']
         return sub
     
-    def __identify_user(self, sub, is_email, session:Session) -> str:
+    def __identify_user(self, sub, is_email) -> str:
         if is_email:
             user_query = select(Users).where(Users.email == sub)
         else:
@@ -111,12 +110,9 @@ class AuthUser:
         session.add(new_user)
         session.commit()
 
-    def user_login(self, user: Users, session:Session, expires_in: int = 120) -> dict[str, str]:
+    def user_login(self, user: Users, session:Session, expires_in: int = 120) -> dict:
         is_email = self.__email_is_valid(user.username)
-        if is_email:
-            user_query = select(Users).where(Users.email == user.username)
-        else:
-            user_query = select(Users).where(Users.username == user.username)
+        user_query = self.__identify_user(is_email=is_email, sub=user.username)
 
         username = session.exec(user_query).first()
 
@@ -124,7 +120,7 @@ class AuthUser:
             raise incorrect_username()
         
         elif not crypt_context.verify(user.password, username.password):
-            raise incorret_password()
+            raise incorrect_password()
 
         exp = datetime.now(timezone.utc) + timedelta(minutes=expires_in)
         payload = {
@@ -144,7 +140,7 @@ class AuthUser:
             sub = self.__decode_jwt(access_token)
             is_email = self.__email_is_valid(sub)
 
-            user_query = self.__identify_user(is_email, sub, session=session)
+            user_query = self.__identify_user(is_email=is_email, sub=sub)
             username = session.exec(user_query).first()
 
             if username is None:
@@ -184,7 +180,7 @@ class AuthUser:
             sub = self.__decode_jwt(access_token)
             is_email = self.__email_is_valid(sub)
 
-            user_query = self.__identify_user(sub=sub, is_email=is_email, session=session)
+            user_query = self.__identify_user(sub=sub, is_email=is_email)
             user = session.exec(user_query).first()
 
             if user:
@@ -202,7 +198,7 @@ class AuthUser:
             self.delete_image(filename)
             raise image_error(e)
 
-    def get_users(self, session:Session):
+    def get_users(self, session:Session) -> list:
         statement = select(Users)
         results = session.exec(statement)
 
@@ -215,9 +211,54 @@ class AuthUser:
         
         return users
     
-    def get_user_by_username(self, username, session:Session):
+    def get_user_by_username(self, username:str, session:Session) -> dict:
         statement = select(Users).where(Users.username == username)
-        result = session.exec(statement).first().model_dump()
+        result = session.exec(statement).first()
+
+        if not result:
+            raise invalid_username()
+
+        result = result.model_dump()
         result['registered_at'] = str(result['registered_at'])
-       
+
         return result
+    
+    def update_username(self, user:dict, session:Session) -> None:
+        statement = select(Users).where(Users.username == user['username'])
+        old_user= session.exec(statement).first()
+
+        if not old_user:
+            raise invalid_username()
+        
+        statement = select(Users).where(Users.username == user["new_username"])
+        new_user = session.exec(statement).first()
+
+        if new_user:
+            raise existent_user()
+        
+        old_user.username = user["new_username"]
+        
+        session.add(old_user)
+        session.commit()
+        session.refresh()
+
+    def delete_user(self, username:str, session:Session):
+        statement = select(Users).where(Users.username == username)
+        user = session.exec(statement).first()
+        
+        if not user:
+            raise invalid_username()
+        
+        session.delete(user)
+        session.commit()
+
+    def decode_jwt_and_verify(self, cookie:str, session:Session) -> str:
+        username = self.__decode_jwt(cookie)
+
+        statement = select(Users).where(Users.username==username)
+        user =  session.exec(statement).first()
+
+        if not user:
+            raise invalid_username()
+        
+        return username
