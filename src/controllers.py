@@ -6,6 +6,7 @@ import uuid
 from sqlmodel import Session
 
 import models
+from schemas import UpdatePassword, UpdateUser, GetUser
 from repository import AuthUser
 from depends import token_verifier_home, verify_adm
 from database import get_session
@@ -80,39 +81,37 @@ async def send_image(request: Request, response = Response, session: Session = D
 
     return response
 
-@index.put('/user/updateuser/{new_username}')
-async def update_user(request:Request, response:Response, new_username:str, session: Session = Depends(get_session)):
+@index.put('/user/updateuser')
+async def update_user(request:Request, response:Response, user:UpdateUser, session: Session = Depends(get_session)):
     cookie = request.cookies.get('jwt')
     uuid = au.decode_jwt_and_verify(cookie, session)
 
     data = {
         "uuid": uuid, 
-        "new_username": new_username
+        "new_username": user.new_username
     }
 
     au.update_username(data=data, session=session)
 
-    response = JSONResponse(
+    return JSONResponse(
         content={"message":"Username updated successfully."},
         status_code=status.HTTP_200_OK)
 
-    return response
-
-@index.put('/user/updatepwd/{new_password}')
-async def update_password(request:Request, new_password:str, session:Session = Depends(get_session)):
-    au.update_password(new_password, session=session, cookie=request.cookies.get('jwt'))
+@index.put('/user/updatepwd')
+async def update_password(request:Request, user:UpdatePassword, session:Session = Depends(get_session)):
+    au.update_password(user.new_password, session=session, cookie=request.cookies.get('jwt'))
 
     return  JSONResponse(
         content="Password has been changed.", 
         status_code=status.HTTP_200_OK
     )
 
-@adm_route.delete('/user/adm/deleteuser/{username}')
-async def delete_user(username, session:Session = Depends(get_session)):
-    au.delete_user(username, session)
+@adm_route.delete('/user/adm/deleteuser')
+async def delete_user(user:GetUser, session:Session = Depends(get_session)):
+    au.delete_user(user.username, session)
 
     return JSONResponse(
-        content={f"User {username} deleted successfully."},
+        content={"message": f"User {user.username} deleted successfully."},
         status_code=status.HTTP_200_OK
     )
 
@@ -127,20 +126,16 @@ async def adm():
 async def get_all_users(session: Session = Depends(get_session)): 
     users = au.get_users(session)
 
-    response = JSONResponse(
+    return JSONResponse(
         content=users,
         status_code=status.HTTP_200_OK
     )
-    return response
 
-@adm_route.get('/user/adm/getuser/{username}')
-async def get_user_by_username(username, session: Session = Depends(get_session)):
-    user = au.get_user_by_username(username, session)
+@adm_route.get('/user/adm/getuser')
+async def get_user_by_username(user:GetUser, session: Session = Depends(get_session)):
+    user = au.get_user_by_username(user.username, session)
 
-    response = JSONResponse(
+    return JSONResponse(
         content=user,
         status_code=status.HTTP_200_OK
     )
-
-    return response
-    
