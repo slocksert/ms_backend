@@ -7,7 +7,7 @@ import re
 import os
 
 from models import Roles, Users
-from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_username, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username
+from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_username, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username, existent_password
 
 SECRET_KEY = config('SECRET_KEY')
 ALGORITHM = config('ALGORITHM')
@@ -263,3 +263,22 @@ class AuthUser:
             raise invalid_username()
         
         return uuid
+    
+    def update_password(self, new_password, cookie:str, session:Session) -> None:
+        uuid = self.__decode_jwt(cookie)
+        user = self.__get_current_user(uuid, session)
+
+        if not user:
+            invalid_username()
+
+        elif crypt_context.verify(new_password, user.password):
+            raise existent_password()
+        
+        elif len(new_password) < 10:
+            raise len_password()
+        
+        new_password = crypt_context.hash(new_password)
+        user.password = new_password
+        session.add(user)
+        session.commit()
+        session.refresh(user)

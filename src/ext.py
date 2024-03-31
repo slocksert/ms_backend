@@ -79,3 +79,9 @@ def image_error(e):
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"An error ocurred while trying to save the image on the database: {e}"
     )
+
+def existent_password():
+    raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail="New password is equal to current password. Please try a different one."
+    )

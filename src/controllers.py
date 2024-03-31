@@ -98,9 +98,14 @@ async def update_user(request:Request, response:Response, new_username:str, sess
 
     return response
 
-@index.put('/user/updatepwd/{old_password}&&{new_password}')
-async def update_password(old_password:str ,new_password:str, session:Session = Depends(get_session)):
-    ...
+@index.put('/user/updatepwd/{new_password}')
+async def update_password(request:Request, new_password:str, session:Session = Depends(get_session)):
+    au.update_password(new_password, session=session, cookie=request.cookies.get('jwt'))
+
+    return  JSONResponse(
+        content="Password has been changed.", 
+        status_code=status.HTTP_200_OK
+    )
 
 @adm_route.delete('/user/adm/deleteuser/{username}')
 async def delete_user(username, session:Session = Depends(get_session)):
