@@ -81,6 +81,11 @@ class AuthUser:
             "access_token": access_token,
             "exp": exp.isoformat()
         }    
+    
+    def __get_current_user(self, uuid:str, session:Session):
+        statement = select(Users).where(Users.uuid==uuid)
+        user =  session.exec(statement).first()
+        return user
 
     def user_register(self, user: Users, session:Session) -> None:
         new_user = Users(
@@ -144,9 +149,7 @@ class AuthUser:
     def verify_token(self, access_token:str, session:Session) -> None:
         try:
             sub = self.__decode_jwt(access_token)
-
-            user_query = select(Users).where(Users.uuid == sub)
-            user = session.exec(user_query).first()
+            user = self.__get_current_user(sub, session)
 
             if user is None:
                 raise jwt_error()
@@ -156,9 +159,8 @@ class AuthUser:
 
     def verify_admin(self, access_token:str, session:Session) -> None:
         try:
-            sub = self.__decode_jwt(access_token)
-            statement = select(Users).where(Users.uuid == sub)
-            user = session.exec(statement).first()
+            uuid = self.__decode_jwt(access_token)
+            user = self.__get_current_user(uuid, session)
 
             if user.id != 1:
                 raise unauthorized()
@@ -183,10 +185,8 @@ class AuthUser:
 
     def send_uuid_image_to_db(self, filename:str, access_token:str, session:Session) -> None:
         try:
-            sub = self.__decode_jwt(access_token)
-
-            user_query = select(Users).where(Users.uuid == sub)
-            user = session.exec(user_query).first()
+            uuid = self.__decode_jwt(access_token)
+            user = self.__get_current_user(uuid, session)
 
             if user:
             # Remove the old image file if it exists
@@ -229,14 +229,12 @@ class AuthUser:
         return result
     
     def update_username(self, data:dict, session:Session):
-        statement = select(Users).where(Users.uuid == data['uuid'])
-        old_user = session.exec(statement).first()
+        old_user = self.__get_current_user(data["uuid"], session)
 
         if not old_user:
             raise invalid_username()
         
-        statement = select(Users).where(Users.username == data["new_username"])
-        new_user = session.exec(statement).first()
+        new_user = self.__get_current_user(data['new_username'], session)
 
         if new_user:
             raise existent_user()
@@ -259,9 +257,7 @@ class AuthUser:
 
     def decode_jwt_and_verify(self, cookie:str, session:Session) -> str:
         uuid = self.__decode_jwt(cookie)
-
-        statement = select(Users).where(Users.uuid==uuid)
-        user =  session.exec(statement).first()
+        user = self.__get_current_user(uuid, session)
 
         if not user:
             raise invalid_username()
