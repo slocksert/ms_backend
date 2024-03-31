@@ -1,6 +1,3 @@
-from models import Roles, Users
-from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_username, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username
-
 from sqlmodel import Session, select
 from passlib.context import CryptContext
 from decouple import config
@@ -8,6 +5,9 @@ from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 import re
 import os
+
+from models import Roles, Users
+from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_username, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username
 
 SECRET_KEY = config('SECRET_KEY')
 ALGORITHM = config('ALGORITHM')
