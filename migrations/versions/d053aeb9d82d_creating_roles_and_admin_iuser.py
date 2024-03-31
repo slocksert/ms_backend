@@ -11,6 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 from repository import create_admin, create_roles
+from database import Session, engine
 
 
 # revision identifiers, used by Alembic.
@@ -19,10 +20,11 @@ down_revision: Union[str, None] = '4d2200c6b37b'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+session = Session(engine)
 
 def upgrade() -> None:
-    create_roles()
-    create_admin()
+    create_roles(session)
+    create_admin(session)
 
 
 def downgrade() -> None:
