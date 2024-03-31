@@ -83,20 +83,19 @@ async def send_image(request: Request, response = Response, session: Session = D
 @index.put('/user/updateuser/{new_username}')
 async def update_user(request:Request, response:Response, new_username:str, session: Session = Depends(get_session)):
     cookie = request.cookies.get('jwt')
-    username = au.decode_jwt_and_verify(cookie, session)
+    uuid = au.decode_jwt_and_verify(cookie, session)
 
     data = {
-        "username": username, 
+        "uuid": uuid, 
         "new_username": new_username
     }
 
-    data = au.update_username(data=data, session=session)
+    au.update_username(data=data, session=session)
 
     response = JSONResponse(
         content={"message":"Username updated successfully."},
         status_code=status.HTTP_200_OK)
 
-    response.set_cookie(key="jwt", value=data['access_token'])
     return response
 
 @index.put('/user/updatepwd/{old_password}&&{new_password}')

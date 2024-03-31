@@ -51,7 +51,7 @@ def incorrect_username():
 def invalid_username():
     raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Invalid username"
+            detail="Invalid user"
     )
 
 

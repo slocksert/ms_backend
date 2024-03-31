@@ -9,7 +9,6 @@ from jose import JWTError, jwt
 import re
 import os
 
-
 SECRET_KEY = config('SECRET_KEY')
 ALGORITHM = config('ALGORITHM')
 
@@ -46,11 +45,15 @@ def create_admin(session:Session) -> None:
 # Class that contains all the functions called by the routes
 class AuthUser:
     def __decode_jwt(self, access_token) -> str:
-        payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
-        sub = payload['sub']
-        return sub
+        try:
+            payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
+            sub = payload['sub']
+            return sub
+        
+        except JWTError:
+            raise jwt_error()
     
-    def __identify_user(self, sub, is_email) -> str:
+    def __identify_user(self, sub:str, is_email:bool) -> str:
         if is_email:
             user_query = select(Users).where(Users.email == sub)
         else:
@@ -65,10 +68,10 @@ class AuthUser:
             return True
         return False
 
-    def __new_jwt(self, username:str, expires_in:int = 120) -> dict:
+    def __new_jwt(self, uuid:str, expires_in:int = 120) -> dict:
         exp = datetime.now(timezone.utc) + timedelta(minutes=expires_in)
         payload = {
-            "sub": username,
+            "sub": uuid,
             "exp": exp
         }
 
@@ -136,17 +139,16 @@ class AuthUser:
         elif not crypt_context.verify(user.password, username.password):
             raise incorrect_password()
 
-        return self.__new_jwt(username=user.username)
+        return self.__new_jwt(uuid=username.uuid)
 
     def verify_token(self, access_token:str, session:Session) -> None:
         try:
             sub = self.__decode_jwt(access_token)
-            is_email = self.__email_is_valid(sub)
 
-            user_query = self.__identify_user(is_email=is_email, sub=sub)
-            username = session.exec(user_query).first()
+            user_query = select(Users).where(Users.uuid == sub)
+            user = session.exec(user_query).first()
 
-            if username is None:
+            if user is None:
                 raise jwt_error()
             
         except JWTError:
@@ -155,7 +157,7 @@ class AuthUser:
     def verify_admin(self, access_token:str, session:Session) -> None:
         try:
             sub = self.__decode_jwt(access_token)
-            statement = select(Users).where(Users.username == sub)
+            statement = select(Users).where(Users.uuid == sub)
             user = session.exec(statement).first()
 
             if user.id != 1:
@@ -182,9 +184,8 @@ class AuthUser:
     def send_uuid_image_to_db(self, filename:str, access_token:str, session:Session) -> None:
         try:
             sub = self.__decode_jwt(access_token)
-            is_email = self.__email_is_valid(sub)
 
-            user_query = self.__identify_user(sub=sub, is_email=is_email)
+            user_query = select(Users).where(Users.uuid == sub)
             user = session.exec(user_query).first()
 
             if user:
@@ -227,9 +228,9 @@ class AuthUser:
 
         return result
     
-    def update_username(self, data:dict, session:Session) -> dict:
-        statement = select(Users).where(Users.username == data['username'])
-        old_user= session.exec(statement).first()
+    def update_username(self, data:dict, session:Session):
+        statement = select(Users).where(Users.uuid == data['uuid'])
+        old_user = session.exec(statement).first()
 
         if not old_user:
             raise invalid_username()
@@ -246,9 +247,6 @@ class AuthUser:
         session.commit()
         session.refresh(old_user)
 
-        print(self.__new_jwt(data['new_username']))
-        return self.__new_jwt(data['new_username'])
-
     def delete_user(self, username:str, session:Session):
         statement = select(Users).where(Users.username == username)
         user = session.exec(statement).first()
@@ -260,12 +258,12 @@ class AuthUser:
         session.commit()
 
     def decode_jwt_and_verify(self, cookie:str, session:Session) -> str:
-        username = self.__decode_jwt(cookie)
+        uuid = self.__decode_jwt(cookie)
 
-        statement = select(Users).where(Users.username==username)
+        statement = select(Users).where(Users.uuid==uuid)
         user =  session.exec(statement).first()
 
         if not user:
             raise invalid_username()
         
-        return username
+        return uuid

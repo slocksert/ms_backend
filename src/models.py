@@ -2,12 +2,14 @@ from sqlmodel import SQLModel, Field
 from typing import Optional
 from datetime import datetime, timezone
 from sqlalchemy import String, Boolean
+import uuid
 
 class Users(SQLModel, table=True):
 
     __tablename__ = "users"
 
     id:Optional[int] = Field(default=None, primary_key=True)
+    uuid:str = Field(default=uuid.uuid4(), unique=True)
     username:str = Field(nullable=False, unique=True, sa_type=String(20))
     password:str = Field(nullable=False, sa_type=String(255))
     email:str = Field(nullable=False, unique=True, sa_type=String(64))
