@@ -82,7 +82,7 @@ async def send_image(request: Request, response = Response, session: Session = D
     return response
 
 @index.put('/user/updateuser')
-async def update_user(request:Request, response:Response, user:UpdateUser, session: Session = Depends(get_session)):
+async def update_user(request:Request, user:UpdateUser, session: Session = Depends(get_session)):
     cookie = request.cookies.get('jwt')
     uuid = au.decode_jwt_and_verify(cookie, session)
 
