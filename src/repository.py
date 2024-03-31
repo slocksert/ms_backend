@@ -1,4 +1,4 @@
-from models import Roles, Users, UserUpdate
+from models import Roles, Users
 from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_username, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username
 
 from sqlmodel import Session, select
@@ -64,7 +64,21 @@ class AuthUser:
         if re.fullmatch(regex, email):
             return True
         return False
-        
+
+    def __new_jwt(self, username:str, expires_in:int = 120) -> dict:
+        exp = datetime.now(timezone.utc) + timedelta(minutes=expires_in)
+        payload = {
+            "sub": username,
+            "exp": exp
+        }
+
+        access_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
+
+        return {
+            "access_token": access_token,
+            "exp": exp.isoformat()
+        }    
+
     def user_register(self, user: Users, session:Session) -> None:
         new_user = Users(
             username=user.username, 
@@ -110,7 +124,7 @@ class AuthUser:
         session.add(new_user)
         session.commit()
 
-    def user_login(self, user: Users, session:Session, expires_in: int = 120) -> dict:
+    def user_login(self, user: Users, session:Session) -> dict:
         is_email = self.__email_is_valid(user.username)
         user_query = self.__identify_user(is_email=is_email, sub=user.username)
 
@@ -122,18 +136,7 @@ class AuthUser:
         elif not crypt_context.verify(user.password, username.password):
             raise incorrect_password()
 
-        exp = datetime.now(timezone.utc) + timedelta(minutes=expires_in)
-        payload = {
-            "sub": user.username,
-            "exp": exp
-        }
-
-        access_token = jwt.encode(payload, SECRET_KEY, algorithm=ALGORITHM)
-
-        return {
-            "access_token": access_token,
-            "exp": exp.isoformat()
-        }
+        return self.__new_jwt(username=user.username)
 
     def verify_token(self, access_token:str, session:Session) -> None:
         try:
@@ -224,24 +227,27 @@ class AuthUser:
 
         return result
     
-    def update_username(self, user:dict, session:Session) -> None:
-        statement = select(Users).where(Users.username == user['username'])
+    def update_username(self, data:dict, session:Session) -> dict:
+        statement = select(Users).where(Users.username == data['username'])
         old_user= session.exec(statement).first()
 
         if not old_user:
             raise invalid_username()
         
-        statement = select(Users).where(Users.username == user["new_username"])
+        statement = select(Users).where(Users.username == data["new_username"])
         new_user = session.exec(statement).first()
 
         if new_user:
             raise existent_user()
         
-        old_user.username = user["new_username"]
+        old_user.username = data["new_username"]
         
         session.add(old_user)
         session.commit()
-        session.refresh()
+        session.refresh(old_user)
+
+        print(self.__new_jwt(data['new_username']))
+        return self.__new_jwt(data['new_username'])
 
     def delete_user(self, username:str, session:Session):
         statement = select(Users).where(Users.username == username)
