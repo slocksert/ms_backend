@@ -61,6 +61,12 @@ def incorrect_password():
             detail="Incorrect username or password"
     )
 
+def wrong_password():
+    raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, 
+            detail="Old password not valid"
+    )
+
 def jwt_error():
     raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 

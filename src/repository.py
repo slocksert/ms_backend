@@ -7,7 +7,7 @@ import re
 import os
 
 from models import Roles, Users
-from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_user, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username, existent_password
+from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_user, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username, existent_password, wrong_password
 
 SECRET_KEY = config('SECRET_KEY')
 ALGORITHM = config('ALGORITHM')
@@ -34,9 +34,14 @@ def create_admin(session:Session) -> None:
         username="admin", 
         email="admin@admin.com",
         company_name="Maceió Segura",
-        has_cnpj=False,
         password=crypt_context.hash(config("ADMIN_PWD")), 
-        role_id=role_admin.id
+        role_id=role_admin.id,
+        adress="Praça da Sé",
+        complement="Lado ímpar",
+        district="Sé",
+        city="São Paulo",
+        state="SP",
+        cep="01001000"
     )
 
     session.add(admin)
@@ -44,6 +49,9 @@ def create_admin(session:Session) -> None:
 
 # Class that contains all the functions called by the routes
 class AuthUser:
+    def __init__(self):
+        self.crypt_context = crypt_context
+
     def __decode_jwt(self, access_token) -> str:
         try:
             payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
@@ -99,7 +107,7 @@ class AuthUser:
     def user_register(self, user: Users, session:Session) -> None:
         new_user = Users(
             username=user.username, 
-            password=crypt_context.hash(user.password), 
+            password=self.crypt_context.hash(user.password), 
             email=user.email,
             company_name=user.company_name,
             has_cnpj=user.has_cnpj,
@@ -149,7 +157,7 @@ class AuthUser:
         if not user or user.is_active != 1:
             raise incorrect_user()
         
-        elif not crypt_context.verify(user_model.password, user.password):
+        elif not self.crypt_context.verify(user_model.password, user.password):
             raise incorrect_password()
 
         return self.__new_jwt(uuid=user.uuid)
@@ -270,21 +278,23 @@ class AuthUser:
         
         return uuid
     
-    def update_password(self, new_password, cookie:str, session:Session) -> None:
+    def update_password(self, data:dict, cookie:str, session:Session) -> None:
         uuid = self.__decode_jwt(cookie)
         user = self.__get_current_user(uuid, session)
 
-        if not user:
-            invalid_username()
+        if not crypt_context.verify(data['old_password'], user.password):
+            raise wrong_password()
 
-        elif crypt_context.verify(new_password, user.password):
+        if not user:
+            raise invalid_username()
+
+        if crypt_context.verify(data['new_password'], user.password):
             raise existent_password()
         
-        elif len(new_password) < 10:
+        if len(data['new_password']) < 10:
             raise len_password()
         
-        new_password = crypt_context.hash(new_password)
-        user.password = new_password
+        user.password = crypt_context.hash(data['new_password'])
         session.add(user)
         session.commit()
         session.refresh(user)

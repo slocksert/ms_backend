@@ -99,7 +99,11 @@ async def update_user(request:Request, user:UpdateUser, session: Session = Depen
 
 @index.put('/user/updatepwd')
 async def update_password(request:Request, user:UpdatePassword, session:Session = Depends(get_session)):
-    au.update_password(user.new_password, session=session, cookie=request.cookies.get('jwt'))
+    data = {
+        "new_password":user.new_password,
+        "old_password":user.old_password
+    }
+    au.update_password(data=data, session=session, cookie=request.cookies.get('jwt'))
 
     return  JSONResponse(
         content="Password has been changed.", 

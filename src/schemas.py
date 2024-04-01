@@ -8,6 +8,7 @@ class UpdateUser(BaseModel):
 
 class UpdatePassword(BaseModel):
     
+    old_password: str = Field(nullable=False, sa_type=String(255))
     new_password: str = Field(nullable=False, sa_type=String(255))
 
 class GetUser(BaseModel):
