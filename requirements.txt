@@ -9,7 +9,6 @@ cffi==1.16.0
 charset-normalizer==3.3.2
 click==8.1.7
 cryptography==42.0.5
-ecdsa==0.18.0
 exceptiongroup==1.2.0
 fastapi==0.110.0
 greenlet==3.0.3
