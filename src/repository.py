@@ -7,7 +7,7 @@ import re
 import os
 
 from models import Roles, Users
-from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_username, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username, existent_password
+from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_user, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username, existent_password
 
 SECRET_KEY = config('SECRET_KEY')
 ALGORITHM = config('ALGORITHM')
@@ -85,6 +85,15 @@ class AuthUser:
     def __get_current_user(self, uuid:str, session:Session):
         statement = select(Users).where(Users.uuid==uuid)
         user =  session.exec(statement).first()
+
+        if user.is_active != 1:
+            raise incorrect_user()
+
+        return user
+    
+    def __statement_by_user(self, username:str, session:Session):
+        statement = select(Users).where(Users.username == username)
+        user = session.exec(statement).first()
         return user
 
     def user_register(self, user: Users, session:Session) -> None:
@@ -98,8 +107,7 @@ class AuthUser:
             phone=user.phone
         )
 
-        user_query = select(Users).where(Users.username == user.username)
-        username = session.exec(user_query).first()
+        username = self.__statement_by_user(user.username, session)
 
         email_query = select(Users).where(Users.email == user.email)
         email = session.exec(email_query).first()
@@ -132,19 +140,19 @@ class AuthUser:
         session.add(new_user)
         session.commit()
 
-    def user_login(self, user: Users, session:Session) -> dict:
-        is_email = self.__email_is_valid(user.username)
-        user_query = self.__identify_user(is_email=is_email, sub=user.username)
+    def user_login(self, user_model: Users, session:Session) -> dict:
+        is_email = self.__email_is_valid(user_model.username)
+        user_query = self.__identify_user(is_email=is_email, sub=user_model.username)
 
-        username = session.exec(user_query).first()
+        user = session.exec(user_query).first()
 
-        if not username:
-            raise incorrect_username()
+        if not user or user.is_active != 1:
+            raise incorrect_user()
         
-        elif not crypt_context.verify(user.password, username.password):
+        elif not crypt_context.verify(user_model.password, user.password):
             raise incorrect_password()
 
-        return self.__new_jwt(uuid=username.uuid)
+        return self.__new_jwt(uuid=user.uuid)
 
     def verify_token(self, access_token:str, session:Session) -> None:
         try:
@@ -217,16 +225,15 @@ class AuthUser:
         return users
     
     def get_user_by_username(self, username:str, session:Session) -> dict:
-        statement = select(Users).where(Users.username == username)
-        result = session.exec(statement).first()
+        user = self.__statement_by_user(username, session)
 
-        if not result:
+        if not user:
             raise invalid_username()
 
-        result = result.model_dump()
-        result['registered_at'] = str(result['registered_at'])
+        user = user.model_dump()
+        user['registered_at'] = str(user['registered_at'])
 
-        return result
+        return user
     
     def update_username(self, data:dict, session:Session):
         old_user = self.__get_current_user(data["uuid"], session)
@@ -246,8 +253,7 @@ class AuthUser:
         session.refresh(old_user)
 
     def delete_user(self, username:str, session:Session):
-        statement = select(Users).where(Users.username == username)
-        user = session.exec(statement).first()
+        user = self.__statement_by_user(username, session)
         
         if not user:
             raise invalid_username()
@@ -279,6 +285,20 @@ class AuthUser:
         
         new_password = crypt_context.hash(new_password)
         user.password = new_password
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+
+    def update_status(self, status:bool, username:str, session:Session):
+        user = self.__statement_by_user(username, session)
+        
+        if not user:
+            invalid_username()
+
+        if type(status) != bool:
+            raise Exception
+        
+        user.is_active = status
         session.add(user)
         session.commit()
         session.refresh(user)

@@ -6,7 +6,7 @@ import uuid
 from sqlmodel import Session
 
 import models
-from schemas import UpdatePassword, UpdateUser, GetUser
+from schemas import UpdatePassword, UpdateUser, GetUser, UpdateStatus
 from repository import AuthUser
 from depends import token_verifier_home, verify_adm
 from database import get_session
@@ -36,7 +36,7 @@ async def user_login(response: Response,
         password=request_form_user.password
     )
 
-    data = au.user_login(user=user, session=session)
+    data = au.user_login(user_model=user, session=session)
 
     response = JSONResponse(content={
         'access_token':data['access_token'],
@@ -137,5 +137,16 @@ async def get_user_by_username(user:GetUser, session: Session = Depends(get_sess
 
     return JSONResponse(
         content=user,
+        status_code=status.HTTP_200_OK
+    )
+
+@adm_route.put('/user/adm/updatestatus')
+async def update_is_active(user: UpdateStatus, session:Session = Depends(get_session)):
+    au.update_status(username=user.username, session=session, status=user.status)
+    state = "Active" if user.status else "Inactive"
+    content = {"message": f"{user.username} is now " + state}
+
+    return JSONResponse(
+        content=content,
         status_code=status.HTTP_200_OK
     )

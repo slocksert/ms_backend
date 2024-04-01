@@ -42,7 +42,7 @@ def cpf_len_and_is_digit():
             detail='CNPJ should have exactly 14 digits'
     )
 
-def incorrect_username():
+def incorrect_user():
     raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
             detail="Incorrect username or password"
