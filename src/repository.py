@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from jose import JWTError, jwt
 import re
 import os
+import uuid 
 
 from models import Roles, Users
 from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_user, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username, existent_password, wrong_password
@@ -41,7 +42,9 @@ def create_admin(session:Session) -> None:
         district="Sé",
         city="São Paulo",
         state="SP",
-        cep="01001000"
+        cep="01001000",
+        uuid=str(uuid.uuid4()),
+        cnpj="00000000000000"
     )
 
     session.add(admin)
@@ -52,9 +55,9 @@ class AuthUser:
     def __init__(self):
         self.crypt_context = crypt_context
 
-    def __decode_jwt(self, access_token) -> str:
+    def __decode_jwt(self, cookie) -> str:
         try:
-            payload = jwt.decode(access_token, SECRET_KEY, algorithms=[ALGORITHM])
+            payload = jwt.decode(cookie, SECRET_KEY, algorithms=[ALGORITHM])
             sub = payload['sub']
             return sub
         
@@ -94,7 +97,10 @@ class AuthUser:
         statement = select(Users).where(Users.uuid==uuid)
         user =  session.exec(statement).first()
 
-        if user.is_active != 1:
+        if not user:
+            raise incorrect_user()
+
+        if user.is_active == False:
             raise incorrect_user()
 
         return user
@@ -110,9 +116,15 @@ class AuthUser:
             password=self.crypt_context.hash(user.password), 
             email=user.email,
             company_name=user.company_name,
-            has_cnpj=user.has_cnpj,
             cnpj=user.cnpj,
-            phone=user.phone
+            phone=user.phone,
+            adress=user.adress,
+            complement=user.complement,
+            district=user.district,
+            city=user.city,
+            state=user.state,
+            cep=user.cep,
+            uuid=str(uuid.uuid4())
         )
 
         username = self.__statement_by_user(user.username, session)
@@ -126,24 +138,21 @@ class AuthUser:
         if username:
             raise existent_user()
         
-        elif len(user.password) < 10:
+        if len(user.password) < 10:
             raise len_password()
         
-        elif not self.__email_is_valid(user.email):
+        if not self.__email_is_valid(user.email):
             raise email_not_valid()
         
-        elif email:
+        if email:
             raise existent_email()
-
-        elif user.has_cnpj:
-            if user.cnpj == None:
-                raise no_cnpj()
-                
-            elif len(user.cnpj) != 14 or not user.cnpj.isdigit():
-                raise cpf_len_and_is_digit()
         
-            elif cnpj:
-                raise existent_cnpj()
+        if user.cnpj != None:
+            if len(user.cnpj) != 14 or not user.cnpj.isdigit():
+                raise cpf_len_and_is_digit()
+    
+        if cnpj:
+            raise existent_cnpj()
 
         session.add(new_user)
         session.commit()
@@ -157,15 +166,15 @@ class AuthUser:
         if not user or user.is_active != 1:
             raise incorrect_user()
         
-        elif not self.crypt_context.verify(user_model.password, user.password):
+        if not self.crypt_context.verify(user_model.password, user.password):
             raise incorrect_password()
 
         return self.__new_jwt(uuid=user.uuid)
 
-    def verify_token(self, access_token:str, session:Session) -> None:
+    def verify_token(self, cookie:str, session:Session) -> None:
         try:
-            sub = self.__decode_jwt(access_token)
-            user = self.__get_current_user(sub, session)
+            uuid = self.__decode_jwt(cookie)
+            user = self.__get_current_user(uuid, session)
 
             if user is None:
                 raise jwt_error()
@@ -173,9 +182,9 @@ class AuthUser:
         except JWTError:
             raise jwt_error()
 
-    def verify_admin(self, access_token:str, session:Session) -> None:
+    def verify_admin(self, cookie:str, session:Session) -> None:
         try:
-            uuid = self.__decode_jwt(access_token)
+            uuid = self.__decode_jwt(cookie)
             user = self.__get_current_user(uuid, session)
 
             if user.id != 1:
@@ -199,9 +208,9 @@ class AuthUser:
             raise FileNotFoundError(f'File "{filename}" does not exists!')
         os.remove(file_path)
 
-    def send_uuid_image_to_db(self, filename:str, access_token:str, session:Session) -> None:
+    def send_uuid_image_to_db(self, filename:str, cookie:str, session:Session) -> None:
         try:
-            uuid = self.__decode_jwt(access_token)
+            uuid = self.__decode_jwt(cookie)
             user = self.__get_current_user(uuid, session)
 
             if user:
@@ -245,12 +254,8 @@ class AuthUser:
     
     def update_username(self, data:dict, session:Session):
         old_user = self.__get_current_user(data["uuid"], session)
-
-        if not old_user:
-            raise invalid_username()
+        new_user = self.__statement_by_user(username=data['new_username'], session=session)
         
-        new_user = self.__get_current_user(data['new_username'], session)
-
         if new_user:
             raise existent_user()
         
@@ -312,3 +317,12 @@ class AuthUser:
         session.add(user)
         session.commit()
         session.refresh(user)
+
+    def get_image_name(self, session:Session, cookie:str):
+        uuid = self.__decode_jwt(cookie=cookie)
+        user = self.__get_current_user(uuid=uuid, session=session)
+
+        if not user:
+            raise incorrect_user()
+        
+        return user.image_uuid

@@ -30,45 +30,212 @@ def dependecy(session):
     
     app.dependency_overrides[get_session] = get_session_override
 
-def create_table(session):
+def test_create_table(session):
+    dependecy(session)
     SQLModel.metadata.create_all(engine, checkfirst=True)
     create_roles(session)
     create_admin(session)
+    assert os.path.exists("test.db")
 
-def test_create_user(client, session):
-    dependecy(session)
-    create_table(session)
+def login(client, username:str = "test", password:str = "test123456"):
+    response = client.post(
+        "/user/login",
+        data={
+            "username":username,
+            "password":password
+        }
+    )
+    return response
 
+def test_create_user(client):
     response =  client.post(
         "/user/register",
         headers={'User-Agent':'application/json'},
         json={
-            "username":"0000", 
+            "username":"test", 
             "email":"0000@gmail.com",
             "company_name":"0000",
-            "has_cnpj":0,
-            "password":"00000000000"
-        }
+            "password":"test123456",
+            "adress":"Praça da Sé",
+            "complement":"Lado ímpar",
+            "district":"Sé",
+            "city":"São Paulo",
+            "state":"SP",
+            "cep":"01001000",
+            "cnpj":"12345678912345"
+            }
     )
-    
-    app.dependency_overrides.clear()
-
     assert response.status_code == 201
 
-def test_login(client, session):
-    dependecy(session)
+def test_login(client):
+    response = login(client)
+    assert response.status_code == 200
 
-    response = client.post(
-        "/user/login",
-        data={
-            "username":"0000",
-            "password":"00000000000"
+def test_home_unauthorized(client):
+    response = client.get("/user")
+    assert response.status_code == 401
+
+def test_home_authorized(client):
+    response = login(client)
+    response = client.get(
+        "/user",
+        headers={
+            "Authorization":f"Bearer {response.cookies.get('jwt')}"
+        }
+    )
+    assert response.status_code == 200
+
+def test_get_image(client):
+    response = login(client)
+    response = client.get(
+        '/user/getimage',
+        headers={
+            "Authorization":f"Bearer {response.cookies.get('jwt')}"
+        }
+    )
+    assert response.json()['image_uuid'] == "Sem imagem"
+
+    
+def test_send_image(client):
+    response = login(client)
+
+    with open("storage/pictures/example.jpg", "rb") as image_file:
+        response = client.post(
+            '/user/sendimage',
+            files={"file": ("example.jpg",image_file, "image/jpeg")},
+            headers={
+                "Authorization": f"Bearer {response.cookies.get('jwt')}"
+            }
+        )
+
+    image_login = login(client)
+    image_request = client.get(
+        "/user/getimage",
+        headers={
+            "Authorization":f"Bearer {image_login.cookies.get('jwt')}"
+        }
+
+    )
+    image_name = image_request.json()['image_uuid']
+    os.remove(f'storage/pictures/{image_name}')
+    assert response.status_code == 201
+
+def test_update_password(client):
+    response = login(client)
+    response = client.put(
+        "/user/updatepwd",
+        headers={
+            "Authorization":f"Bearer {response.cookies.get('jwt')}"
+        },
+        json={
+            "new_password":"testingpassword",
+            "old_password":"test123456"
+        }
+    )
+    assert response.status_code == 200
+
+def test_update_user(client):
+    response = login(client, password="testingpassword")
+    response = client.put(
+        "/user/updateuser",
+        headers={
+            "Authorization":f"Bearer {response.cookies.get('jwt')}"
+        },
+        json={
+            "new_username":"test_update_user"
         }
     )
 
     assert response.status_code == 200
 
-    
+def login_adm(client, username:str = "admin", password:str = "admin"):
+    response = client.post(
+        "/user/login",
+        data={
+            "username":username,
+            "password":password
+        }
+    )
+    return response
+
+def test_create_user_adm(client):
+    response =  client.post(
+        "/user/register",
+        headers={'User-Agent':'application/json'},
+        json={
+            "username":"admin", 
+            "email":"admin@gmail.com",
+            "company_name":"0000",
+            "password":"admin",
+            "adress":"Praça da Sé",
+            "complement":"Lado ímpar",
+            "district":"Sé",
+            "city":"São Paulo",
+            "state":"SP",
+            "cep":"01001000",
+            "cnpj":"12345678912345"
+            }
+    )
+    assert response.status_code == 409
+
+def test_login_adm(client):
+    response = login_adm(client)
+    assert response.status_code == 200
+
+def test_home_unauthorized_adm(client):
+    response = client.get("/user/adm")
+    assert response.status_code == 401
+
+def test_home_authorized_adm(client):
+    response = login_adm(client)
+    response = client.get(
+        "/user/adm",
+        headers={
+            "Authorization":f"Bearer {response.cookies.get('jwt')}"
+        }
+    )
+    assert response.status_code == 200
+
+def test_get_users(client):
+    response = login_adm(client)
+    response = client.get(
+        "/user/adm/getusers",
+        headers={"Authorization":f"Bearer {response.cookies.get('jwt')}"}
+    )
+    assert response.status_code == 200
+
+def test_get_user(client):
+    response = login_adm(client)
+    jwt_token = response.cookies.get('jwt')
+
+    response = client.get(
+        "/user/adm/getusers?username=admin",
+        headers={"Authorization": f"Bearer {jwt_token}"}
+    )
+    assert response.status_code == 200
+
+def test_update_status(client):
+    response = login_adm(client)
+    response = client.post(
+        "/user/adm/updatestatus",
+        headers={"Authorization":f"Bearer {response.cookies.get('jwt')}"},
+        json={
+            "username":"admin",
+            "status":False
+        }
+    )
+
+def test_delete_user(client):
+    response = login_adm(client)
+    jwt_token = response.cookies.get('jwt')
+
+    response = client.post(
+        "/user/adm/deleteuser",
+        headers={"Authorization": f"Bearer {jwt_token}"},
+        json={"username": "admin"}
+    )
+    assert response.status_code == 200
+
 def test_delete_tables():
     SQLModel.metadata.drop_all(engine, checkfirst=True)
     app.dependency_overrides.clear()

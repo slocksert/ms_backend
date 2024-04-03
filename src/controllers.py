@@ -1,4 +1,4 @@
-from fastapi import status, APIRouter, Depends, Response, Request
+from fastapi import File, UploadFile, status, APIRouter, Depends, Response, Request
 from fastapi.responses import JSONResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
@@ -55,9 +55,9 @@ async def home():
     )
 
 @index.post('/user/sendimage')
-async def send_image(request: Request, response = Response, session: Session = Depends(get_session)):
+async def send_image(request:Request, session: Session = Depends(get_session), file:UploadFile = File(...)):
     try:
-        image_bytes = await request.body()
+        image_bytes = await file.read()
         filename = f"{uuid.uuid4()}.jpg"
         
         au.write_image(filename=filename, image_bytes=image_bytes)
@@ -71,15 +71,22 @@ async def send_image(request: Request, response = Response, session: Session = D
     cookie = request.cookies.get("jwt")
     
     response = JSONResponse(
-        content={
-            "filename":filename,
-            "cookie": cookie
-        }, status_code=status.HTTP_201_CREATED
+        content={"message":"Profile picture updated successfuly."}, 
+        status_code=status.HTTP_201_CREATED
     )
 
     au.send_uuid_image_to_db(filename, cookie, session)
-
     return response
+
+@index.get('/user/getimage')
+async def get_image(request:Request, session:Session = Depends(get_session)):
+    cookie = request.cookies.get("jwt")
+    image_uuid = au.get_image_name(cookie=cookie, session=session)
+
+    return JSONResponse(
+        content={"image_uuid":image_uuid}, 
+        status_code=status.HTTP_201_CREATED
+    )
 
 @index.put('/user/updateuser')
 async def update_user(request:Request, user:UpdateUser, session: Session = Depends(get_session)):
@@ -99,18 +106,19 @@ async def update_user(request:Request, user:UpdateUser, session: Session = Depen
 
 @index.put('/user/updatepwd')
 async def update_password(request:Request, user:UpdatePassword, session:Session = Depends(get_session)):
+    cookie = request.cookies.get('jwt')
     data = {
         "new_password":user.new_password,
         "old_password":user.old_password
     }
-    au.update_password(data=data, session=session, cookie=request.cookies.get('jwt'))
+    au.update_password(data=data, session=session, cookie=cookie)
 
     return  JSONResponse(
         content="Password has been changed.", 
         status_code=status.HTTP_200_OK
     )
 
-@adm_route.delete('/user/adm/deleteuser')
+@adm_route.post('/user/adm/deleteuser')
 async def delete_user(user:GetUser, session:Session = Depends(get_session)):
     au.delete_user(user.username, session)
 
