@@ -1,4 +1,5 @@
-from sqlmodel import Session, select
+from typing import Literal
+from sqlmodel import Session, select, SQLModel
 from passlib.context import CryptContext
 from decouple import config
 from datetime import datetime, timedelta, timezone
@@ -7,11 +8,11 @@ import re
 import os
 import uuid 
 
-from models import Roles, Users
-from ext import existent_user, len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_user, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username, existent_password, wrong_password
+from models import Roles, Users, Contact
+from ext import len_password, email_not_valid,existent_email, no_cnpj, cpf_len_and_is_digit, incorrect_user, incorrect_password, jwt_error, unauthorized, image_error, existent_cnpj, invalid_username, existent_password, wrong_password
 
-SECRET_KEY = config('SECRET_KEY')
-ALGORITHM = config('ALGORITHM')
+SECRET_KEY = config("SECRET_KEY")
+ALGORITHM = config("ALGORITHM")
 
 crypt_context = CryptContext(schemes=["argon2"]) #Argon2 abstraction
 
@@ -32,19 +33,11 @@ def create_admin(session:Session) -> None:
     role_admin = session.exec(query).first()
 
     admin = Users(
-        username="admin", 
+        name="admin", 
         email="admin@admin.com",
-        company_name="Maceió Segura",
         password=crypt_context.hash(config("ADMIN_PWD")), 
         role_id=role_admin.id,
-        adress="Praça da Sé",
-        complement="Lado ímpar",
-        district="Sé",
-        city="São Paulo",
-        state="SP",
-        cep="01001000",
-        uuid=str(uuid.uuid4()),
-        cnpj="00000000000000"
+        uuid=str(uuid.uuid4())
     )
 
     session.add(admin)
@@ -58,22 +51,15 @@ class AuthUser:
     def __decode_jwt(self, cookie) -> str:
         try:
             payload = jwt.decode(cookie, SECRET_KEY, algorithms=[ALGORITHM])
-            sub = payload['sub']
+            sub = payload["sub"]
             return sub
         
         except JWTError:
             raise jwt_error()
     
-    def __identify_user(self, sub:str, is_email:bool) -> str:
-        if is_email:
-            user_query = select(Users).where(Users.email == sub)
-        else:
-            user_query = select(Users).where(Users.username == sub)
-        return user_query
-    
     #Email validator using regular expressions 
     def __email_is_valid(self, email: str) -> bool:
-        regex = r'\b[A-Za-z0-9._%+-]+@[A-za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
+        regex = r"\b[A-Za-z0-9._%+-]+@[A-za-z0-9.-]+\.[A-Z|a-z]{2,7}\b"
 
         if re.fullmatch(regex, email):
             return True
@@ -93,52 +79,35 @@ class AuthUser:
             "exp": exp.isoformat()
         }    
     
-    def __get_current_user(self, uuid:str, session:Session):
-        statement = select(Users).where(Users.uuid==uuid)
-        user =  session.exec(statement).first()
+    def __get_curent_by(self, value:str, table:SQLModel, 
+                        session:Session, 
+                        param:Literal["uuid", "name", "cnpj", "email"] = "uuid"
+        ) -> Users | Contact:
+        
+        statement = select(table).where(getattr(table, param) == value)
+        data = session.exec(statement).first()
 
-        if not user:
-            raise incorrect_user()
+        if param != "cnpj":
+            if not data:
+                raise incorrect_user()
 
-        if user.is_active == False:
-            raise incorrect_user()
-
-        return user
-    
-    def __statement_by_user(self, username:str, session:Session):
-        statement = select(Users).where(Users.username == username)
-        user = session.exec(statement).first()
-        return user
+            if not data.is_active:
+                raise incorrect_user()
+        
+        return data
 
     def user_register(self, user: Users, session:Session) -> None:
         new_user = Users(
-            username=user.username, 
+            name=user.name, 
             password=self.crypt_context.hash(user.password), 
             email=user.email,
-            company_name=user.company_name,
-            cnpj=user.cnpj,
-            phone=user.phone,
-            adress=user.adress,
-            complement=user.complement,
-            district=user.district,
-            city=user.city,
-            state=user.state,
-            cep=user.cep,
             uuid=str(uuid.uuid4())
         )
 
-        username = self.__statement_by_user(user.username, session)
-
         email_query = select(Users).where(Users.email == user.email)
         email = session.exec(email_query).first()
-
-        cnpj_query = select(Users).where(Users.cnpj == user.cnpj)
-        cnpj = session.exec(cnpj_query).first()
-
-        if username:
-            raise existent_user()
         
-        if len(user.password) < 10:
+        if len(user.password) < 8:
             raise len_password()
         
         if not self.__email_is_valid(user.email):
@@ -146,25 +115,22 @@ class AuthUser:
         
         if email:
             raise existent_email()
-        
-        if user.cnpj != None:
-            if len(user.cnpj) != 14 or not user.cnpj.isdigit():
-                raise cpf_len_and_is_digit()
-    
-        if cnpj:
-            raise existent_cnpj()
 
         session.add(new_user)
         session.commit()
 
     def user_login(self, user_model: Users, session:Session) -> dict:
-        is_email = self.__email_is_valid(user_model.username)
-        user_query = self.__identify_user(is_email=is_email, sub=user_model.username)
+        is_email = self.__email_is_valid(user_model.email)
 
-        user = session.exec(user_query).first()
+        if not is_email:
+            return email_not_valid()
 
-        if not user or user.is_active != 1:
-            raise incorrect_user()
+        user = self.__get_curent_by(
+            table=Users,
+            param="email",
+            value=user_model.email,
+            session=session
+        )
         
         if not self.crypt_context.verify(user_model.password, user.password):
             raise incorrect_password()
@@ -174,7 +140,12 @@ class AuthUser:
     def verify_token(self, cookie:str, session:Session) -> None:
         try:
             uuid = self.__decode_jwt(cookie)
-            user = self.__get_current_user(uuid, session)
+            user = self.__get_curent_by(
+                table=Users,
+                param="uuid",
+                value=uuid,
+                session=session
+            )
 
             if user is None:
                 raise jwt_error()
@@ -185,7 +156,12 @@ class AuthUser:
     def verify_admin(self, cookie:str, session:Session) -> None:
         try:
             uuid = self.__decode_jwt(cookie)
-            user = self.__get_current_user(uuid, session)
+            user = self.__get_curent_by(
+                table=Users,
+                param="uuid",
+                value=uuid,
+                session=session
+            )
 
             if user.id != 1:
                 raise unauthorized()
@@ -194,39 +170,52 @@ class AuthUser:
             raise jwt_error()
     
     def write_image(self, filename:str, image_bytes:bytes) -> None:
-        directory = "storage/pictures"
+        directory = "../storage/pictures"
         
         os.makedirs(directory, exist_ok=True)
         
         file_path = os.path.join(directory, filename)
-        with open(file_path, 'wb') as f:
+        with open(file_path, "wb") as f:
             f.write(image_bytes)
+        
+        image_path = os.path.exists(file_path)
+            
+        if not image_path:
+            raise image_error()
 
     def delete_image(self, filename:str) -> None:
-        file_path = os.path.join("storage/pictures", filename)
+        file_path = os.path.join("../storage/pictures", filename)
         if not os.path.exists(file_path):
-            raise FileNotFoundError(f'File "{filename}" does not exists!')
+            raise FileNotFoundError(f"File {file_path} does not exists!")
         os.remove(file_path)
 
-    def send_uuid_image_to_db(self, filename:str, cookie:str, session:Session) -> None:
+    def send_uuid_image_to_db(
+            self, filename:str, cookie:str, session:Session
+            ) -> None:
         try:
             uuid = self.__decode_jwt(cookie)
-            user = self.__get_current_user(uuid, session)
+            user = self.__get_curent_by(
+                table=Users,
+                session=session,
+                param="uuid",
+                value=uuid
+            )
 
             if user:
             # Remove the old image file if it exists
                 if user.image_uuid != "Sem imagem":
                     old_image_file = user.image_uuid
-                    os.remove(os.path.join("storage/pictures", old_image_file))
+                    os.remove(os.path.join("../storage/pictures", old_image_file))
 
                 # Update the image filename in the database
                 user.image_uuid = filename
                 session.add(user)
                 session.commit()
                 
-        except Exception as e:
+        except JWTError:
+            raise jwt_error()
+        except Exception:
             self.delete_image(filename)
-            raise image_error(e)
 
     def get_users(self, session:Session) -> list:
         statement = select(Users)
@@ -236,79 +225,77 @@ class AuthUser:
 
         for user in results:
             user_dict = user.model_dump()
-            user_dict['registered_at'] = str(user_dict['registered_at'])
+            user_dict["registered_at"] = str(user_dict["registered_at"])
             users.append(user_dict)
         
         return users
     
-    def get_user_by_username(self, username:str, session:Session) -> dict:
-        user = self.__statement_by_user(username, session)
-
-        if not user:
-            raise invalid_username()
+    def get_user_by_username(self, name:str, session:Session) -> dict:
+        user = self.__get_curent_by(
+            table=Users,
+            session=session,
+            param="name",
+            value=name
+        )
 
         user = user.model_dump()
-        user['registered_at'] = str(user['registered_at'])
+        user["registered_at"] = str(user["registered_at"])
 
         return user
     
-    def update_username(self, data:dict, session:Session):
-        old_user = self.__get_current_user(data["uuid"], session)
-        new_user = self.__statement_by_user(username=data['new_username'], session=session)
+    def update_username(self, session:Session, cookie:str, name:str) -> None:
+        uuid = self.__decode_jwt(cookie=cookie)
+        user = self.__get_curent_by(
+            table=Users,
+            session=session,
+            param="uuid",
+            value=uuid
+        )
+        user.name = name
         
-        if new_user:
-            raise existent_user()
-        
-        old_user.username = data["new_username"]
-        
-        session.add(old_user)
+        session.add(user)
         session.commit()
-        session.refresh(old_user)
+        session.refresh(user)
 
-    def delete_user(self, username:str, session:Session):
-        user = self.__statement_by_user(username, session)
-        
-        if not user:
-            raise invalid_username()
+    def delete_user(self, name:str, session:Session):
+        user = self.__get_curent_by(
+            table=Users,
+            session=session,
+            param="name",
+            value=name
+        )
         
         session.delete(user)
         session.commit()
-
-    def decode_jwt_and_verify(self, cookie:str, session:Session) -> str:
-        uuid = self.__decode_jwt(cookie)
-        user = self.__get_current_user(uuid, session)
-
-        if not user:
-            raise invalid_username()
-        
-        return uuid
     
     def update_password(self, data:dict, cookie:str, session:Session) -> None:
         uuid = self.__decode_jwt(cookie)
-        user = self.__get_current_user(uuid, session)
+        user = self.__get_curent_by(session=session, table=Users, value=uuid, param="uuid")
 
-        if not crypt_context.verify(data['old_password'], user.password):
+        if not crypt_context.verify(data["old_password"], user.password):
             raise wrong_password()
 
         if not user:
             raise invalid_username()
 
-        if crypt_context.verify(data['new_password'], user.password):
+        if crypt_context.verify(data["new_password"], user.password):
             raise existent_password()
         
-        if len(data['new_password']) < 10:
+        if len(data["new_password"]) < 10:
             raise len_password()
         
-        user.password = crypt_context.hash(data['new_password'])
+        user.password = crypt_context.hash(data["new_password"])
         session.add(user)
         session.commit()
         session.refresh(user)
 
-    def update_status(self, status:bool, username:str, session:Session):
-        user = self.__statement_by_user(username, session)
-        
-        if not user:
-            invalid_username()
+    def update_status(self, status:bool, name:str, session:Session) -> None:
+        user = self.__get_curent_by(
+            table=Users,
+            session=session,
+            param="name",
+            value=name
+        )
 
         if type(status) != bool:
             raise Exception
@@ -318,11 +305,59 @@ class AuthUser:
         session.commit()
         session.refresh(user)
 
-    def get_image_name(self, session:Session, cookie:str):
+    def get_image_name(self, session:Session, cookie:str) -> str:
         uuid = self.__decode_jwt(cookie=cookie)
-        user = self.__get_current_user(uuid=uuid, session=session)
+        user = self.__get_curent_by(
+                table=Users,
+                session=session,
+                param="uuid",
+                value=uuid
+        )
 
         if not user:
             raise incorrect_user()
         
         return user.image_uuid
+    
+    def send_contact(self, session:Session, cookie:str, form:Contact) -> None:
+        new_form = Contact(
+            adress=form.adress,
+            phone=form.phone,
+            cep=form.cep,
+            city=form.city,
+            cnpj=form.cnpj,
+            company_name=form.company_name,
+            complement=form.complement,
+            district=form.district,
+            state=form.state,
+            description=form.description
+        )
+
+        uuid = self.__decode_jwt(cookie=cookie)
+        user = self.__get_curent_by(
+            table=Users, 
+            value=uuid, 
+            param="uuid", 
+            session=session
+        )
+        cnpj = self.__get_curent_by(
+            table=Contact,
+            value=form.cnpj,
+            param="cnpj", 
+            session=session
+        )
+
+        if not user:
+            raise incorrect_user()
+        
+        if not form.cnpj:
+            raise no_cnpj()
+        
+        if len(form.cnpj) < 14 or not form.cnpj.isdigit():
+            raise cpf_len_and_is_digit()
+        
+        if cnpj:
+            raise existent_cnpj()
+        
+        session.add(new_form)
+        session.commit()

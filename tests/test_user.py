@@ -37,11 +37,11 @@ def test_create_table(session):
     create_admin(session)
     assert os.path.exists("test.db")
 
-def login(client, username:str = "test", password:str = "test123456"):
+def login(client, email:str = "0000@gmail.com", password:str = "test123456"):
     response = client.post(
         "/user/login",
         data={
-            "username":username,
+            "username":email,
             "password":password
         }
     )
@@ -52,18 +52,10 @@ def test_create_user(client):
         "/user/register",
         headers={'User-Agent':'application/json'},
         json={
-            "username":"test", 
+            "name":"test", 
             "email":"0000@gmail.com",
-            "company_name":"0000",
             "password":"test123456",
-            "adress":"Praça da Sé",
-            "complement":"Lado ímpar",
-            "district":"Sé",
-            "city":"São Paulo",
-            "state":"SP",
-            "cep":"01001000",
-            "cnpj":"12345678912345"
-            }
+        }
     )
     assert response.status_code == 201
 
@@ -95,19 +87,20 @@ def test_get_image(client):
     )
     assert response.json()['image_uuid'] == "Sem imagem"
 
-    
 def test_send_image(client):
     response = login(client)
 
     with open("storage/pictures/example.jpg", "rb") as image_file:
         response = client.post(
             '/user/sendimage',
-            files={"file": ("example.jpg",image_file, "image/jpeg")},
+            files={"file": ("example.jpg", image_file, "image/jpeg")},
             headers={
                 "Authorization": f"Bearer {response.cookies.get('jwt')}"
             }
         )
+    assert response.status_code == 201
 
+def test_delete_image(client):
     image_login = login(client)
     image_request = client.get(
         "/user/getimage",
@@ -117,8 +110,36 @@ def test_send_image(client):
 
     )
     image_name = image_request.json()['image_uuid']
-    os.remove(f'storage/pictures/{image_name}')
-    assert response.status_code == 201
+    
+    try:
+        os.remove(f'storage/pictures/{image_name}')
+    except FileNotFoundError:
+        ...
+
+    assert not os.path.exists(f"storage/pictures/{image_name}")
+
+def test_send_contact_form(client):
+    response = login(client)
+    response = client.post(
+        "/user/contact",
+        headers={
+            "Authorization":f"Bearer {response.cookies.get('jwt')}"
+        },
+        json={
+            "company_name": "string",
+            "phone": "string",
+            "cnpj": "12345678901234",
+            "adress": "string",
+            "city": "string",
+            "state": "string",
+            "cep": "string",
+            "district": "string",
+            "complement": "string",
+            "description": "string"
+        }
+    )
+
+    assert response.status_code == 200
 
 def test_update_password(client):
     response = login(client)
@@ -148,11 +169,13 @@ def test_update_user(client):
 
     assert response.status_code == 200
 
-def login_adm(client, username:str = "admin", password:str = "admin"):
+##Admin tests
+
+def login_adm(client, email:str = "admin@admin.com", password:str = "adminadmin"):
     response = client.post(
         "/user/login",
         data={
-            "username":username,
+            "username":email,
             "password":password
         }
     )
@@ -164,17 +187,9 @@ def test_create_user_adm(client):
         headers={'User-Agent':'application/json'},
         json={
             "username":"admin", 
-            "email":"admin@gmail.com",
-            "company_name":"0000",
-            "password":"admin",
-            "adress":"Praça da Sé",
-            "complement":"Lado ímpar",
-            "district":"Sé",
-            "city":"São Paulo",
-            "state":"SP",
-            "cep":"01001000",
-            "cnpj":"12345678912345"
-            }
+            "email":"admin@admin.com",
+            "password":"adminadmin",
+        }
     )
     assert response.status_code == 409
 
@@ -236,6 +251,7 @@ def test_delete_user(client):
     )
     assert response.status_code == 200
 
+    
 def test_delete_tables():
     SQLModel.metadata.drop_all(engine, checkfirst=True)
     app.dependency_overrides.clear()
@@ -243,4 +259,3 @@ def test_delete_tables():
 def test_delete_db():
     os.remove("test.db")
     assert not os.path.exists("test.db")
-

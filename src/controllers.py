@@ -15,11 +15,11 @@ register = APIRouter(prefix='/user')
 login = APIRouter(prefix='/user')
 index = APIRouter(dependencies=[Depends(token_verifier_home)])
 adm_route = APIRouter(dependencies=[Depends(verify_adm)])
-au = AuthUser()
+repository = AuthUser()
 
 @register.post('/register')
 async def create_user(user: models.Users,session: Session = Depends(get_session)):
-    au.user_register(user=user, session=session)
+    repository.user_register(user=user, session=session)
     
     return JSONResponse(
         content=({
@@ -32,11 +32,11 @@ async def user_login(response: Response,
                      request_form_user: OAuth2PasswordRequestForm = Depends(), session: Session = Depends(get_session)):
 
     user = models.Users(
-        username=request_form_user.username,
+        email=request_form_user.username,
         password=request_form_user.password
     )
 
-    data = au.user_login(user_model=user, session=session)
+    data = repository.user_login(user_model=user, session=session)
 
     response = JSONResponse(content={
         'access_token':data['access_token'],
@@ -54,19 +54,22 @@ async def home():
         status_code=status.HTTP_200_OK
     )
 
+@index.post('/user/contact')
+async def contact(request:Request, form:models.Contact, session:Session = Depends(get_session)):
+    cookie = request.cookies.get("jwt")
+    repository.send_contact(cookie=cookie, session=session, form=form)
+
+    return JSONResponse(
+        content={"message":"Contact form sent"}, 
+        status_code=status.HTTP_200_OK
+    )
+
 @index.post('/user/sendimage')
 async def send_image(request:Request, session: Session = Depends(get_session), file:UploadFile = File(...)):
-    try:
-        image_bytes = await file.read()
-        filename = f"{uuid.uuid4()}.jpg"
-        
-        au.write_image(filename=filename, image_bytes=image_bytes)
-
-    except Exception as e:
-        return JSONResponse(
-            content={"error": str(e)},
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
+    image_bytes = await file.read()
+    filename = f"{uuid.uuid4()}.jpg"
+    
+    repository.write_image(filename=filename, image_bytes=image_bytes)
     
     cookie = request.cookies.get("jwt")
     
@@ -75,13 +78,13 @@ async def send_image(request:Request, session: Session = Depends(get_session), f
         status_code=status.HTTP_201_CREATED
     )
 
-    au.send_uuid_image_to_db(filename, cookie, session)
+    repository.send_uuid_image_to_db(filename, cookie, session)
     return response
 
 @index.get('/user/getimage')
 async def get_image(request:Request, session:Session = Depends(get_session)):
     cookie = request.cookies.get("jwt")
-    image_uuid = au.get_image_name(cookie=cookie, session=session)
+    image_uuid = repository.get_image_name(cookie=cookie, session=session)
 
     return JSONResponse(
         content={"image_uuid":image_uuid}, 
@@ -91,14 +94,8 @@ async def get_image(request:Request, session:Session = Depends(get_session)):
 @index.put('/user/updateuser')
 async def update_user(request:Request, user:UpdateUser, session: Session = Depends(get_session)):
     cookie = request.cookies.get('jwt')
-    uuid = au.decode_jwt_and_verify(cookie, session)
 
-    data = {
-        "uuid": uuid, 
-        "new_username": user.new_username
-    }
-
-    au.update_username(data=data, session=session)
+    repository.update_username(session=session, cookie=cookie, name=user.new_username)
 
     return JSONResponse(
         content={"message":"Username updated successfully."},
@@ -111,7 +108,7 @@ async def update_password(request:Request, user:UpdatePassword, session:Session 
         "new_password":user.new_password,
         "old_password":user.old_password
     }
-    au.update_password(data=data, session=session, cookie=cookie)
+    repository.update_password(data=data, session=session, cookie=cookie)
 
     return  JSONResponse(
         content="Password has been changed.", 
@@ -120,7 +117,7 @@ async def update_password(request:Request, user:UpdatePassword, session:Session 
 
 @adm_route.post('/user/adm/deleteuser')
 async def delete_user(user:GetUser, session:Session = Depends(get_session)):
-    au.delete_user(user.username, session)
+    repository.delete_user(user.username, session)
 
     return JSONResponse(
         content={"message": f"User {user.username} deleted successfully."},
@@ -136,7 +133,7 @@ async def adm():
 
 @adm_route.get('/user/adm/getusers')
 async def get_all_users(session: Session = Depends(get_session)): 
-    users = au.get_users(session)
+    users = repository.get_users(session)
 
     return JSONResponse(
         content=users,
@@ -145,7 +142,7 @@ async def get_all_users(session: Session = Depends(get_session)):
 
 @adm_route.get('/user/adm/getuser')
 async def get_user_by_username(user:GetUser, session: Session = Depends(get_session)):
-    user = au.get_user_by_username(user.username, session)
+    user = repository.get_user_by_username(user.username, session)
 
     return JSONResponse(
         content=user,
@@ -154,7 +151,7 @@ async def get_user_by_username(user:GetUser, session: Session = Depends(get_sess
 
 @adm_route.put('/user/adm/updatestatus')
 async def update_is_active(user: UpdateStatus, session:Session = Depends(get_session)):
-    au.update_status(username=user.username, session=session, status=user.status)
+    repository.update_status(username=user.username, session=session, status=user.status)
     state = "Active" if user.status else "Inactive"
     content = {"message": f"{user.username} is now " + state}
 

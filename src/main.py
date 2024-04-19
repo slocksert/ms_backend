@@ -25,7 +25,7 @@ app.include_router(adm_route)
 if __name__ == "__main__":
     uvicorn.run(
         "main:app",
-        host=config("host"),
+        host='0.0.0.0',
         port=int(config("port")),
         reload=1,
         server_header=0

@@ -28,5 +28,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_table("contact")
     op.drop_table("users")
     op.drop_table("roles")

@@ -1,11 +1,5 @@
 from fastapi import HTTPException, status
 
-def existent_user():
-    raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, 
-            detail="Existent user"
-    )
-
 def len_password():
     raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -27,7 +21,7 @@ def existent_email():
 def no_cnpj():
     raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail='CNPJ is required when the user has a CNPJ'
+            detail='CNPJ is required'
     )
 
 def existent_cnpj():
@@ -80,7 +74,7 @@ def unauthorized():
             headers={"WWW-Authenticate": "Bearer"}
     )
 
-def image_error(e):
+def image_error(e = "Image not sent"):
     raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
             detail=f"An error ocurred while trying to save the image on the database: {e}"

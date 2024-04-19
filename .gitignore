@@ -3,3 +3,4 @@
 **/__pycache__
 /ms_db
 /storage/pictures
+**/.pytest_cache
