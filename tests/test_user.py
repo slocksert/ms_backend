@@ -85,15 +85,15 @@ def test_get_image(client):
             "Authorization":f"Bearer {response.cookies.get('jwt')}"
         }
     )
-    assert response.json()['image_uuid'] == "Sem imagem"
+    assert response.json()['image_uuid'] == "NoImage"
 
 def test_send_image(client):
     response = login(client)
 
-    with open("storage/pictures/example.jpg", "rb") as image_file:
+    with open("storage/pictures/NoImage.png", "rb") as image_file:
         response = client.post(
             '/user/sendimage',
-            files={"file": ("example.jpg", image_file, "image/jpeg")},
+            files={"file": ("NoImage.png", image_file, "image/jpeg")},
             headers={
                 "Authorization": f"Bearer {response.cookies.get('jwt')}"
             }

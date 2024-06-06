@@ -1,5 +1,6 @@
+import io
 from fastapi import File, UploadFile, status, APIRouter, Depends, Response, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
 import uuid
@@ -56,7 +57,9 @@ async def home():
 
 @index.post('/user/contact')
 async def contact(request:Request, form:models.Contact, session:Session = Depends(get_session)):
-    cookie = request.cookies.get("jwt")
+    cookie = request.headers.get("Authorization").split(' ')
+    cookie = cookie[1]
+    
     repository.send_contact(cookie=cookie, session=session, form=form)
 
     return JSONResponse(
@@ -71,7 +74,8 @@ async def send_image(request:Request, session: Session = Depends(get_session), f
     
     repository.write_image(filename=filename, image_bytes=image_bytes)
     
-    cookie = request.cookies.get("jwt")
+    cookie = request.headers.get("Authorization").split(' ')
+    cookie = cookie[1]
     
     response = JSONResponse(
         content={"message":"Profile picture updated successfuly."}, 
@@ -83,17 +87,37 @@ async def send_image(request:Request, session: Session = Depends(get_session), f
 
 @index.get('/user/getimage')
 async def get_image(request:Request, session:Session = Depends(get_session)):
-    cookie = request.cookies.get("jwt")
+    cookie = request.headers.get("Authorization").split(' ')
+    cookie = cookie[1]
+
     image_uuid = repository.get_image_name(cookie=cookie, session=session)
 
     return JSONResponse(
         content={"image_uuid":image_uuid}, 
-        status_code=status.HTTP_201_CREATED
+        status_code=status.HTTP_200_OK
     )
+
+@index.get('/user/getimagefile')
+async def get_file(request:Request, session:Session = Depends(get_session)):
+    cookie = request.headers.get("Authorization").split(' ')
+    cookie = cookie[1]
+
+    image_uuid = repository.get_image_name(cookie=cookie, session=session)
+    image_path = (
+        "storage/pictures/NoImage.png"
+        if image_uuid == "NoImage"
+        else f"storage/pictures/{image_uuid}"
+    )
+
+    with open(image_path, "rb") as file:
+        image_binary = file.read()
+
+    return StreamingResponse(io.BytesIO(image_binary), media_type="image/png")
 
 @index.put('/user/updateuser')
 async def update_user(request:Request, user:UpdateUser, session: Session = Depends(get_session)):
-    cookie = request.cookies.get('jwt')
+    cookie = request.headers.get("Authorization").split(' ')
+    cookie = cookie[1]
 
     repository.update_username(session=session, cookie=cookie, name=user.new_username)
 
@@ -103,7 +127,8 @@ async def update_user(request:Request, user:UpdateUser, session: Session = Depen
 
 @index.put('/user/updatepwd')
 async def update_password(request:Request, user:UpdatePassword, session:Session = Depends(get_session)):
-    cookie = request.cookies.get('jwt')
+    cookie = request.headers.get("Authorization").split(' ')
+    cookie = cookie[1]
     data = {
         "new_password":user.new_password,
         "old_password":user.old_password
@@ -112,6 +137,18 @@ async def update_password(request:Request, user:UpdatePassword, session:Session 
 
     return  JSONResponse(
         content="Password has been changed.", 
+        status_code=status.HTTP_200_OK
+    )
+
+@index.get('/user/getinfo')
+async def get_user_info(request:Request, session:Session = Depends(get_session)):
+    cookie = request.headers.get("Authorization").split(' ')
+    cookie = cookie[1]
+
+    user = repository.get_info(cookie=cookie, session=session)
+
+    return JSONResponse(
+        content=user,
         status_code=status.HTTP_200_OK
     )
 

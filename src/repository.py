@@ -170,7 +170,7 @@ class AuthUser:
             raise jwt_error()
     
     def write_image(self, filename:str, image_bytes:bytes) -> None:
-        directory = "../storage/pictures"
+        directory = "storage/pictures"
         
         os.makedirs(directory, exist_ok=True)
         
@@ -184,7 +184,7 @@ class AuthUser:
             raise image_error()
 
     def delete_image(self, filename:str) -> None:
-        file_path = os.path.join("../storage/pictures", filename)
+        file_path = os.path.join("storage/pictures", filename)
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"File {file_path} does not exists!")
         os.remove(file_path)
@@ -203,9 +203,9 @@ class AuthUser:
 
             if user:
             # Remove the old image file if it exists
-                if user.image_uuid != "Sem imagem":
+                if user.image_uuid != "NoImage":
                     old_image_file = user.image_uuid
-                    os.remove(os.path.join("../storage/pictures", old_image_file))
+                    os.remove(os.path.join("storage/pictures", old_image_file))
 
                 # Update the image filename in the database
                 user.image_uuid = filename
@@ -239,6 +239,27 @@ class AuthUser:
         )
 
         user = user.model_dump()
+        user["registered_at"] = str(user["registered_at"])
+
+        return user
+    
+    def get_info(self, cookie, session:Session) -> dict:
+        uuid = self.__decode_jwt(cookie=cookie)
+        user = self.__get_curent_by(
+            table=Users,
+            session=session,
+            param="uuid",
+            value=uuid
+        )
+
+        user = user.model_dump(
+            exclude=
+            [
+            'role_id','uuid', 'image_uuid', 
+            'password', 'is_active', 'id'
+            ]
+        )
+
         user["registered_at"] = str(user["registered_at"])
 
         return user
@@ -332,7 +353,6 @@ class AuthUser:
             state=form.state,
             description=form.description
         )
-
         uuid = self.__decode_jwt(cookie=cookie)
         user = self.__get_curent_by(
             table=Users, 
